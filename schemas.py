@@ -1,48 +1,119 @@
 """
-Database Schemas
+Database Schemas for EdTech Platform
 
-Define your MongoDB collection schemas here using Pydantic models.
-These schemas are used for data validation in your application.
+Each Pydantic model represents a collection in MongoDB. The collection name is the
+lowercase of the class name (e.g., User -> "user").
 
-Each Pydantic model represents a collection in your database.
-Model name is converted to lowercase for the collection name:
-- User -> "user" collection
-- Product -> "product" collection
-- BlogPost -> "blogs" collection
+These schemas are used for request/response validation and to keep a consistent
+shape for documents written to the database.
 """
+from __future__ import annotations
 
-from pydantic import BaseModel, Field
-from typing import Optional
+from pydantic import BaseModel, Field, EmailStr
+from typing import Optional, List, Literal, Dict, Any
+from datetime import datetime
 
-# Example schemas (replace with your own):
-
+# -----------------------------
+# Core User & Auth
+# -----------------------------
 class User(BaseModel):
-    """
-    Users collection schema
-    Collection name: "user" (lowercase of class name)
-    """
-    name: str = Field(..., description="Full name")
-    email: str = Field(..., description="Email address")
-    address: str = Field(..., description="Address")
-    age: Optional[int] = Field(None, ge=0, le=120, description="Age in years")
-    is_active: bool = Field(True, description="Whether user is active")
+    name: str
+    email: EmailStr
+    phone: Optional[str] = None
+    role: Literal["student", "instructor", "admin"] = "student"
+    avatar_url: Optional[str] = None
+    is_active: bool = True
+    # Gamification wallet
+    coins: int = 0
+    points: int = 0
 
-class Product(BaseModel):
-    """
-    Products collection schema
-    Collection name: "product" (lowercase of class name)
-    """
-    title: str = Field(..., description="Product title")
-    description: Optional[str] = Field(None, description="Product description")
-    price: float = Field(..., ge=0, description="Price in dollars")
-    category: str = Field(..., description="Product category")
-    in_stock: bool = Field(True, description="Whether product is in stock")
+class OTPRequest(BaseModel):
+    phone: str
 
-# Add your own schemas here:
-# --------------------------------------------------
+class OTPVerify(BaseModel):
+    phone: str
+    otp: str
 
-# Note: The Flames database viewer will automatically:
-# 1. Read these schemas from GET /schema endpoint
-# 2. Use them for document validation when creating/editing
-# 3. Handle all database operations (CRUD) directly
-# 4. You don't need to create any database endpoints!
+# -----------------------------
+# Catalog: Course -> Lesson -> Quiz
+# -----------------------------
+class Course(BaseModel):
+    title: str
+    description: Optional[str] = None
+    category: str = Field(..., description="High-level category (e.g., KTET, LP, UP)")
+    subcategory: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    is_published: bool = True
+    price_rupees: int = 0
+
+class Lesson(BaseModel):
+    course_id: str
+    title: str
+    video_url: Optional[str] = None
+    order: int = 0
+    is_free_preview: bool = False
+
+class Question(BaseModel):
+    prompt: str
+    options: List[str]
+    correct_index: int
+    points: int = 1
+
+class Quiz(BaseModel):
+    lesson_id: str
+    questions: List[Question]
+    pass_percentage: int = 60
+
+# -----------------------------
+# Enrollments & Progress
+# -----------------------------
+class Enrollment(BaseModel):
+    user_id: str
+    course_id: str
+    status: Literal["active", "completed"] = "active"
+
+class LessonProgress(BaseModel):
+    user_id: str
+    course_id: str
+    lesson_id: str
+    is_unlocked: bool = False
+    is_completed: bool = False
+    quiz_score: Optional[int] = None
+    quiz_total: Optional[int] = None
+
+# -----------------------------
+# Transactions (coins/points) & Payments
+# -----------------------------
+class Transaction(BaseModel):
+    user_id: str
+    type: Literal["buy_coins", "spend_coins", "exchange_points"]
+    amount: int = Field(..., description="Number of coins or points involved")
+    status: Literal["pending", "success", "failed"] = "pending"
+    reference: Optional[str] = None
+    meta: Dict[str, Any] = {}
+
+# -----------------------------
+# Notifications & Feedback
+# -----------------------------
+class Notification(BaseModel):
+    user_id: str
+    title: str
+    message: str
+    type: Literal["info", "success", "warning", "error"] = "info"
+    is_read: bool = False
+
+class Feedback(BaseModel):
+    user_id: str
+    message: str
+    rating: Optional[int] = Field(None, ge=1, le=5)
+    context: Optional[str] = None
+
+# -----------------------------
+# Admin analytics snapshots (simplified)
+# -----------------------------
+class RankSnapshot(BaseModel):
+    user_id: str
+    course_id: str
+    rank: int
+    completion_rate: float = Field(..., ge=0, le=100)
+    calculated_at: datetime = Field(default_factory=datetime.utcnow)
